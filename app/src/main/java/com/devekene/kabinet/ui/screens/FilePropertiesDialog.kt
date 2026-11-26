@@ -1,10 +1,12 @@
-package com.example.ui.screens
+package com.devekene.kabinet.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -13,18 +15,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.example.model.FileItem
+import com.devekene.kabinet.data.FileRepository
+import com.devekene.kabinet.model.FileItem
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun FilePropertiesDialog(
     file: FileItem,
+    checksum: String,
     onDismiss: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     val formattedDate = dateFormat.format(Date(file.dateModified))
-    val sizeKb = String.format(Locale.getDefault(), "%.2f KB (%d bytes)", file.size / 1024.0, file.size)
+    val formattedSize = "${FileRepository.formatBytes(file.size)} (${file.size} bytes)"
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -35,8 +39,9 @@ fun FilePropertiesDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -60,14 +65,27 @@ fun FilePropertiesDialog(
                 HorizontalDivider()
 
                 PropertyRow(label = "File Name", value = file.name)
-                PropertyRow(label = "Location Path", value = file.path)
-                PropertyRow(label = "File Size", value = sizeKb)
+                PropertyRow(
+                    label = if (file.isLocked) "Vault Storage Path" else "Location Path",
+                    value = file.path
+                )
+                if (file.isLocked && !file.originalPath.isNullOrBlank()) {
+                    PropertyRow(label = "Original Location", value = file.originalPath)
+                }
+                PropertyRow(label = "File Size", value = formattedSize)
                 PropertyRow(label = "Modified Date", value = formattedDate)
                 PropertyRow(label = "MIME Type", value = file.mimeType)
-                PropertyRow(label = "Cloud Status", value = if (file.isCloudSynced) "Synced to Cloud" else "Local Only")
-                PropertyRow(label = "Checksum (SHA-256)", value = file.checksum, isMono = true)
+                PropertyRow(
+                    label = "Security Status",
+                    value = if (file.isLocked) "Hidden in Biometric Vault" else "Standard Device Storage"
+                )
+                PropertyRow(
+                    label = "Checksum (SHA-256)",
+                    value = checksum.ifBlank { "Calculating..." },
+                    isMono = true
+                )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
                     onClick = onDismiss,

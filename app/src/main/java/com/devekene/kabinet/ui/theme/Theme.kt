@@ -1,4 +1,4 @@
-package com.example.ui.theme
+package com.devekene.kabinet.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -44,7 +44,7 @@ private val LightColorScheme =
 @Composable
 fun KabinetTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Default false to ensure bold Red accent is prominent
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme =
@@ -62,13 +62,4 @@ fun KabinetTheme(
         typography = Typography,
         content = content
     )
-}
-
-@Composable
-fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    KabinetTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, content = content)
 }

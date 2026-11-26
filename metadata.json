@@ -1,6 +1,6 @@
 {
   "name": "Kabinet",
-  "description": "A powerful file manager and explorer with category sorting, cloud sync, file previews, and biometric security.",
+  "description": "A local device file explorer and organizer with category sorting, file previews, and a biometric-protected hidden vault.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

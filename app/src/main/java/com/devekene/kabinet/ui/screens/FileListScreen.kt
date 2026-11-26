@@ -1,17 +1,17 @@
-package com.example.ui.screens
+package com.devekene.kabinet.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,17 +19,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.model.FileCategory
-import com.example.model.FileItem
-import com.example.ui.viewmodel.SortOption
-import com.example.ui.viewmodel.ViewMode
+import com.devekene.kabinet.data.FileRepository
+import com.devekene.kabinet.model.FileCategory
+import com.devekene.kabinet.model.FileItem
+import com.devekene.kabinet.ui.viewmodel.SortOption
+import com.devekene.kabinet.ui.viewmodel.ViewMode
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(
     files: List<FileItem>,
@@ -38,27 +38,46 @@ fun FileListScreen(
     sortOption: SortOption,
     viewMode: ViewMode,
     selectedItemIds: Set<String>,
+    isLoading: Boolean,
+    onCategoryChange: (FileCategory) -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSortOptionChange: (SortOption) -> Unit,
     onViewModeToggle: () -> Unit,
+    onConnectFolderClick: () -> Unit,
+    onPickFilesClick: () -> Unit,
     onFileClick: (FileItem) -> Unit,
     onFileLongClick: (FileItem) -> Unit,
     onItemSelected: (String) -> Unit,
     onDeleteSelected: () -> Unit,
-    onSyncSelected: () -> Unit,
+    onHideSelectedInVault: () -> Unit,
     onToggleFavorite: (String) -> Unit,
-    onToggleLock: (String) -> Unit,
+    onHideInVault: (FileItem) -> Unit,
+    onDeleteFile: (FileItem) -> Unit,
+    onOpenExternally: (FileItem) -> Unit,
     onPropertiesClick: (FileItem) -> Unit,
     onClearSelection: () -> Unit
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
+
+    val browseCategories = remember {
+        listOf(
+            FileCategory.ALL,
+            FileCategory.IMAGES,
+            FileCategory.VIDEOS,
+            FileCategory.AUDIO,
+            FileCategory.DOCUMENTS,
+            FileCategory.APKS,
+            FileCategory.ARCHIVES,
+            FileCategory.DOWNLOADS,
+            FileCategory.FAVORITES
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top Bar Controls: Search & View Mode & Sort
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
@@ -68,7 +87,7 @@ fun FileListScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Search files by name, type...") },
+                    placeholder = { Text("Search local files by name, type...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
@@ -77,7 +96,9 @@ fun FileListScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("files_search_input"),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -86,7 +107,29 @@ fun FileListScreen(
                     )
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Category filter chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    browseCategories.forEach { category ->
+                        FilterChip(
+                            selected = currentCategory == category,
+                            onClick = { onCategoryChange(category) },
+                            label = { Text(category.displayName) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -94,19 +137,35 @@ fun FileListScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${currentCategory.name} (${files.size})",
+                        text = "${currentCategory.displayName} (${files.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Sort Button
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onConnectFolderClick,
+                            modifier = Modifier.testTag("connect_folder_button")
+                        ) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "Connect Folder")
+                        }
+                        IconButton(
+                            onClick = onPickFilesClick,
+                            modifier = Modifier.testTag("pick_files_button")
+                        ) {
+                            Icon(Icons.Default.AddCircleOutline, contentDescription = "Add Local File")
+                        }
+
                         Box {
                             OutlinedButton(
                                 onClick = { showSortMenu = true },
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.Default.Sort, contentDescription = "Sort", modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Sort, contentDescription = "Sort", modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(text = sortOption.name.lowercase().replaceFirstChar { it.uppercase() })
                             }
@@ -139,7 +198,6 @@ fun FileListScreen(
                             }
                         }
 
-                        // Grid / List Toggle
                         IconButton(onClick = onViewModeToggle) {
                             Icon(
                                 imageVector = if (viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
@@ -151,7 +209,13 @@ fun FileListScreen(
             }
         }
 
-        // Contextual Action Bar when items are selected
+        if (isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         AnimatedVisibility(visible = selectedItemIds.isNotEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -172,8 +236,8 @@ fun FileListScreen(
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(onClick = onSyncSelected) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = "Sync", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        IconButton(onClick = onHideSelectedInVault) {
+                            Icon(Icons.Default.VisibilityOff, contentDescription = "Hide in Vault", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                         IconButton(onClick = onDeleteSelected) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -186,7 +250,6 @@ fun FileListScreen(
             }
         }
 
-        // File Content List or Grid
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -194,7 +257,9 @@ fun FileListScreen(
         ) {
             if (files.isEmpty()) {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -206,10 +271,26 @@ fun FileListScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "No files found",
+                        text = "No local files found here",
                         style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Connect a device folder or add files to browse, preview, delete, or hide them in your Secure Vault.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = onConnectFolderClick, shape = RoundedCornerShape(12.dp)) {
+                            Text("Connect Folder")
+                        }
+                        OutlinedButton(onClick = onPickFilesClick, shape = RoundedCornerShape(12.dp)) {
+                            Text("Pick File")
+                        }
+                    }
                 }
             } else if (viewMode == ViewMode.LIST) {
                 LazyColumn(
@@ -230,7 +311,9 @@ fun FileListScreen(
                             },
                             onLongClick = { onFileLongClick(file) },
                             onToggleFavorite = { onToggleFavorite(file.id) },
-                            onToggleLock = { onToggleLock(file.id) },
+                            onHideInVault = { onHideInVault(file) },
+                            onDeleteClick = { onDeleteFile(file) },
+                            onOpenExternally = { onOpenExternally(file) },
                             onPropertiesClick = { onPropertiesClick(file) }
                         )
                     }
@@ -271,12 +354,14 @@ fun FileRowItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onToggleLock: () -> Unit,
+    onHideInVault: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onOpenExternally: () -> Unit,
     onPropertiesClick: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     val formattedDate = dateFormat.format(Date(file.dateModified))
-    val sizeMb = String.format(Locale.getDefault(), "%.1f MB", file.size / (1024.0 * 1024.0))
+    val formattedSize = FileRepository.formatBytes(file.size)
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
@@ -331,7 +416,7 @@ fun FileRowItem(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = sizeMb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = formattedSize, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(text = "•", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(text = formattedDate, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -339,11 +424,7 @@ fun FileRowItem(
 
             if (file.isFavorite) {
                 Icon(Icons.Default.Star, contentDescription = "Favorite", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-            if (file.isLocked) {
-                Icon(Icons.Default.Lock, contentDescription = "Locked", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
             }
 
             Box {
@@ -352,16 +433,29 @@ fun FileRowItem(
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Properties") },
-                        onClick = { showMenu = false; onPropertiesClick() }
+                        text = { Text("Open With...") },
+                        leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null) },
+                        onClick = { showMenu = false; onOpenExternally() }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (file.isFavorite) "Unfavorite" else "Favorite") },
+                        text = { Text("Hide in Secure Vault") },
+                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null) },
+                        onClick = { showMenu = false; onHideInVault() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (file.isFavorite) "Remove Favorite" else "Add to Favorites") },
+                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
                         onClick = { showMenu = false; onToggleFavorite() }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (file.isLocked) "Unlock Vault" else "Lock in Vault") },
-                        onClick = { showMenu = false; onToggleLock() }
+                        text = { Text("Properties") },
+                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                        onClick = { showMenu = false; onPropertiesClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        onClick = { showMenu = false; onDeleteClick() }
                     )
                 }
             }
@@ -377,7 +471,7 @@ fun FileGridItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val sizeMb = String.format(Locale.getDefault(), "%.1f MB", file.size / (1024.0 * 1024.0))
+    val formattedSize = FileRepository.formatBytes(file.size)
 
     Card(
         modifier = Modifier
@@ -426,10 +520,8 @@ fun FileGridItem(
                         )
                     }
                 }
-                if (file.isLocked) {
-                    Icon(Icons.Default.Lock, contentDescription = "Locked", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                } else if (file.isCloudSynced) {
-                    Icon(Icons.Default.CloudDone, contentDescription = "Synced", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                if (file.isFavorite) {
+                    Icon(Icons.Default.Star, contentDescription = "Favorite", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 }
             }
 
@@ -443,7 +535,7 @@ fun FileGridItem(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = sizeMb,
+                    text = formattedSize,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
